@@ -4,7 +4,8 @@
     var ts = require("gulp-typescript");
     var tsProject = ts.createProject("tsconfig.json");
     var runSequence = require('run-sequence');
-    var gulpClean = require('gulp-clean');
+    // var gulpClean = require('gulp-clean');
+    var del=require('del');
     var gulpPrint = require('gulp-print');
     var fs = require('fs');
     var mergeStream = require('merge-stream');
@@ -14,18 +15,18 @@
     var gulpCssUrlVersioner = require('gulp-css-url-versioner');
     var dateFormat = require('date-format');
     var gulpUglify = require('gulp-uglify');
-    var syncExec = require('sync-exec');
+    // var syncExec = require('sync-exec');
     var gulpIgnore = require('gulp-ignore');
     var postcss = require('gulp-postcss');
     var px2rem = require('postcss-px2rem');
     var gulpHtmlVersion = require('gulp-html-version');
     var cache = require('gulp-cache'); //缓存img，因为img压缩很费时间
     var nodeModulesCondition = 'node_modules/**/*';
-
+    var connect=require('gulp-connect');//引入gulp-connect模块 
+    var open=require('open');//引入open模块，注意不是gulp-open
+    var plumber = require('gulp-plumber');
     var ENV = {};
-
     ENV.ROOT = process.env.INIT_CWD.replace(/\/$/, '') + '/';
-
     ENV.SRC = './';
 
     ENV.EXT = {
@@ -100,14 +101,6 @@
       }
       return merged;
     };
-
-    gulp.task('build:cleanLaravelCache', function() {
-      if (fs.existsSync(config.artisan)) {
-        var ret = syncExec( config.artisan + ' view:clear');
-        ret = syncExec( config.artisan + ' cache:clear');
-      }
-    });
-
     /*
      
      * 处理 静态文件 如  字体 | 图片 | 视频 | HTML;
@@ -127,6 +120,7 @@
           return gulp.src(src, {
               base: base
             })
+            .pipe(plumber())
             .pipe(gulpIgnore.exclude(nodeModulesCondition))
             .pipe(gulpPrint(function(filepath) {
               return "build: " + filepath;
@@ -148,6 +142,7 @@
            return gulp.src(src, {
                     base: base
                   })
+                  .pipe(plumber())
                   .pipe(gulpHtmlVersion({
                       paramType: 'timestamp',
                       suffix: ['css', 'js', 'jpg']
@@ -157,8 +152,9 @@
       return buildWith(a, b, c);
     });
     
-    gulp.task('build:image', function() {
+    gulp.task('build:image',function() {
       var srcs = [];
+      console.log(77777777777)
       for (var i = 0; i < config.src.length; i++) {
         srcs.push(config.src[i] + '/**/*.@(' + ENV.EXT['image'].join('|') + ')');
       }
@@ -170,6 +166,7 @@
             return gulp.src(src, {
                 base: base
               })
+              .pipe(plumber())
               .pipe(gulpIgnore.exclude(nodeModulesCondition))
               .pipe(gulpPrint(function(filepath) {
                 return "build: " + filepath;
@@ -204,6 +201,7 @@
           return gulp.src(src, {
               base: base
             })
+            .pipe(plumber())
             .pipe(gulpIgnore.exclude(nodeModulesCondition))
             .pipe(gulpPrint(function(filepath) {
               return "build: " + filepath;
@@ -235,6 +233,7 @@
           return gulp.src(src, {
               base: base
             })
+            .pipe(plumber())
             .pipe(gulpIgnore.exclude(nodeModulesCondition))
             .pipe(gulpPrint(function(filepath) {
               return "build: " + filepath;
@@ -265,6 +264,7 @@
           return gulp.src(src, {
               base: base
             })
+            .pipe(plumber())
             .pipe(gulpIgnore.exclude(nodeModulesCondition))
             .pipe(gulpPrint(function(filepath) {
               return "build: " + filepath;
@@ -275,7 +275,7 @@
         }
       return buildWith(a, b, c);
     });
-    gulp.task('build:ts', function () {
+    gulp.task('build:ts',function () {
       var srcs = [];
       for (var i = 0; i < config.src.length; i++) {
         srcs.push(config.src[i] + '/**/*.ts');
@@ -288,11 +288,41 @@
           return gulp.src(src, {
               base: base
             })
+            .pipe(plumber())
             .pipe(tsProject())
             .js.pipe(gulp.dest(config.dist))
         }
       return buildWith(a, b, c);
       
+    });
+    gulp.task('build:relaod', function () {
+      var srcs = [];
+      for (var i = 0; i < config.src.length; i++) {
+        srcs.push(config.src[i] + '/**/*.html');
+      }
+      var a = 'html',
+        b = srcs,
+        c = function(src, base) {
+          // src='./public/**/*.html'
+          // base:'./public'
+          return gulp.src(src, {
+              base: base
+            })
+            .pipe(connect.reload())
+            
+        }
+      return buildWith(a, b, c);
+      
+    });
+    
+    gulp.task('build:serve',function () { 
+      　　connect.server({ 
+             host:'0.0.0.0',
+      　　　　root:ENV.SRC+config.dist,　　//使用前面定义的rootPath作为服务器运行的根目录 
+      　　　　livereload:true,　　//是否自动监听，true表明自动监听 
+      　　　　port:3056　　　　//服务器的端口号，可以随便取一个 
+      　　}); 
+      　open(`http://${getIPAdress()}:3056`);　　//自动使用浏览器打开http://localhost:3056的页面 
     });
 
     gulp.task('watching', function() {
@@ -315,27 +345,45 @@
               break;
             }
           }
-
           if (null != groupFound) {
-
-            if (groupFound == 'js') {
-              for (var i = 0; i < config.apps.length; i++) {
-                if (path.indexOf(config.apps[i] + '/') === 0) {
-                  console.log('watcher builder ' + groupFound + ' webpack ignore');
-                  return null;
-                }
-              }
-            }
-
             console.log('watcher builder ' + groupFound + ' starting');
             ENV.WATCH[groupFound] = path;
+            console.log(event)
+            if('deleted' == event.type){
+              let filePath,fileType;
+              for(let i in config.src){
+                if(path.indexOf(config.src[i])>=0){
+                  filePath=config.dist+path.substring(config.src[i].length,path.lastIndexOf('.')+1);
+                  break;
+                }
+              }
+              switch (groupFound) {
+                case 'css':
+                case 'less':
+                  fileType='css'
+                  break;
+                case 'js': 
+                case 'ts':   
+                    fileType='js'
+                    break;
+                case 'image':
+                    fileType='@(' + ENV.EXT['image'].join('|') + ')'
+                    break;
+                default:
+                    fileType=groupFound;
+                  break;
+              }
+              console.log(filePath+fileType)
+              clean(filePath+fileType)
+            }
+            
             if ('image' == groupFound) {
               runSequence(
-                'build:' + groupFound, 'build:less', 'build:css','build:html', 'build:cleanLaravelCache'
-              );
+               'build:' + groupFound, 'build:less', 'build:css','build:html', 'build:relaod'
+              )
             } else {
               runSequence(
-                'build:' + groupFound, 'build:cleanLaravelCache'
+                'build:' + groupFound, 'build:relaod'
               );
             }
           } else {
@@ -352,6 +400,24 @@
 
     gulp.task('default', function() {
       runSequence(
-        'build:static', 'build:image', 'build:less', 'build:css','build:ts','build:js','build:html', 'build:cleanLaravelCache', 'watching'
+        'build:static', 'build:image', 'build:less', 'build:css','build:ts','build:js','build:html','build:serve', 'watching'
       );
     });
+  
+    function getIPAdress(){
+      var interfaces = require('os').networkInterfaces();
+      for(var devName in interfaces){
+          var iface = interfaces[devName];
+          for(var i=0;i<iface.length;i++){
+              var alias = iface[i];
+              if(alias.family === 'IPv4' && alias.address !== '127.0.0.1' && !alias.internal){
+                  return alias.address;
+              }
+          }
+      }
+    }
+    function clean(path) {
+      console.log('Clean: ' + path)
+      del(path);
+      
+    }

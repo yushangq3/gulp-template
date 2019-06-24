@@ -5,6 +5,7 @@
 `npm run gulp`
 
 >未配置sourceMap  
+
 >未区分开发模式和生产模式
 ---
 > js/css/image 等文件压缩  
